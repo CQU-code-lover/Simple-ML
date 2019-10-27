@@ -1,37 +1,51 @@
 #朴素贝叶斯
 #by 大白菜
 #2019/10/24
-
 import math
 import numpy
-
 class NbmException(Exception):
     def __init__(self,erro_str):
         self.erro_value=erro_str
 
 class NaiveBayesianModel():
-    def __init__(self,data_list,label_list=None,last_item_is_label_flag=True,debug=False):
+    def __init__(self,data_list,label_list=None,last_item_is_label_flag=True,debug_flag=False):
         self.e_data=data_list
         self.data_length = len(self.e_data)
         self.property_length=None
         self.label_list=label_list
         self.last_item_is_label_flag=last_item_is_label_flag
-        self.debug_flag=debug
+        self.debug_flag=debug_flag
         self.discrete_list=[]    #离散型表
-        self.init_data()
         self.unique_label_list=[]
         self.property_list=[]    #二维表 list[i]对应第i个属性的可能取值
         self.three_d_property=[]   #3维属性对应表 对应label_list中不同的分类情况
         self.have_model_flag=False
+
+        self.init_data()
     def init_data(self):
+        # 检查样本标签
+        if self.last_item_is_label_flag and self.label_list == None:
+            self.label_list = []
+            for i in self.e_data:
+                self.label_list.append(i.pop())
+            if len(self.e_data[0]) == 0:
+                raise NbmException("训练集除去label后属性为空")
+        elif (not self.last_item_is_label_flag) and self.label_list == None:
+            raise NbmException("不将数据集最后一个作为label时 label_list必须输入")
+        elif self.last_item_is_label_flag and self.label_list != None:
+            raise NbmException("不能同时将最后一位设为label且输入自定义label")
+        else:
+            pass
+        if len(self.e_data) != len(self.label_list):
+            raise NbmException("label表长与 训练集长度不一致")
         #检查训练集
         try:
-            temp1=len(self.e_data[0])
+            temp1=self.e_data[0]
         except:
             raise NbmException("不合法的训练集")
         self.property_length=len(temp1)
         for i in temp1:
-            if type(i)=="str":
+            if isinstance(i,str):
                 self.discrete_list.append(True)
             else:
                 self.discrete_list.append(False)
@@ -43,27 +57,14 @@ class NaiveBayesianModel():
                     pass
             except:
                 NbmException("不合法的训练集")
-        #检查样本标签
-        if self.last_item_is_label_flag and self.label_list==None:
-            self.label_list=[]
-            for i in self.e_data:
-                self.label_list.append(i.pop())
-            if len(self.e_data[0])==0:
-                raise NbmException("训练集除去label后属性为空")
-        elif (not self.last_item_is_label_flag) and self.label_list==None:
-            raise NbmException("不将数据集最后一个作为label时 label_list必须输入")
-        elif self.last_item_is_label_flag and self.label_list!=None:
-            raise NbmException("不能同时将最后一位设为label且输入自定义label")
-        else:
-            pass
-        if len(self.e_data)!=len(self.label_list):
-            raise NbmException("label表长与 训练集长度不一致")
+
 
         #生成去重后的label_list-------->unique_label_list
         self.unique_label_list=self._get_unique_list(self.label_list)
         if self.debug_flag:
             print(self.e_data)
             print(self.label_list)
+            print(self.unique_label_list)
         print("数据集通过检查")
     def _get_unique_list(self,input_list):
         re_list=[]
@@ -74,12 +75,12 @@ class NaiveBayesianModel():
 
     def exercise_model(self):   #生成模型
         #填充property_list
-        for i in self.property_length:
+        for i in range(self.property_length):
             inner_list=[]
             if self.discrete_list[i]==False:     #当为非离散的数据时
                 self.property_list.append(None)
                 continue
-            for j in self.data_length:
+            for j in range(self.data_length):
                 if self.e_data[j][i] not in inner_list:
                     inner_list.append(self.e_data[j][i])
                 else:
@@ -90,16 +91,19 @@ class NaiveBayesianModel():
         for i in self.unique_label_list:
             two_d_list=[]    #2D表
             data_item_index_list=[]
-            for l_index in range(self.label_list):
+            for l_index in range(len(self.label_list)):
                 if self.label_list[l_index]==i:
                     data_item_index_list.append(l_index)    #e_data的第l_index号元素为此label
                 else:
                     pass
             Dc_length=len(data_item_index_list)
 
-            for j in self.property_length:
+            for j in range(self.property_length):
                 if self.discrete_list[j]==True:
-                    two_d_list.append(self._count_data_by_property(data_item_index_list,j)/Dc_length)
+                    list1=self._count_data_by_property(data_item_index_list, j)
+                    for idx in range(len(list1)):
+                        list1[idx]=list1[idx]/Dc_length
+                    two_d_list.append(list1)
                 else:
                     #存放离散参数的元组
                     two_d_list.append(self._get_N_args(data_item_index_list,j))
@@ -136,11 +140,47 @@ class NaiveBayesianModel():
             raise NbmException("没有训练好的模型,使用exercise_model训练一个模型或者使用load_model加载一个模型")
         if len(properties)!=self.property_length:
             raise NbmException("properties长度不正确")
-        if type(properties)!="list":
+        if not isinstance(properties,list):
             raise NbmException("properties必须是一个list")
         h=[]   #代价函数序列
 
+        #获取k_list
+        k_list=[None]*self.property_length
+        for m in range(len(k_list)):
+            for k in range(len(self.property_list[m])):
+                if properties[m]==self.property_list[m][k]:
+                    k_list[m]=k
+                    break
 
-
-
+        for i in range(len(self.unique_label_list)):
+            label=self.unique_label_list[i]
+            h_x=self._P_lable_be(label)
+            for j in range(self.property_length):
+                if self.discrete_list[j]==False:   #非离散
+                    args=self.three_d_property[i][j]
+                    h_x*=self._get_P_continuous(args,properties[j])
+                else:    #离散
+                    h_x*=self.three_d_property[i][j][k_list[j]]
+            h.append(h_x)
+        max_index=0
+        for i in range(len(h)):
+            if h[i]>=h[max_index]:
+                max_index=i
+            else:
+                pass
+        print("最大索引值")
+        print(max_index)
+        return [max_index,self.unique_label_list[max_index]]
+    def _P_lable_be(self,label):    #返回P(c)
+        re_value=0
+        for i in self.label_list:
+            if i==label:
+                re_value+=1
+            else:
+                pass
+        return (re_value+1)/(self.data_length+len(self.unique_label_list))
+if __name__=="__main__":
+    nbm=NaiveBayesianModel([["长",1],["短",0],["短",0],["短",0],["长",1]],debug_flag=True)
+    nbm.exercise_model()
+    nbm.work(["长"])
 
